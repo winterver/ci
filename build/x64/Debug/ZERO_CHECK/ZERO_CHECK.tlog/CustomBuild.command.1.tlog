@@ -1,0 +1,10 @@
+^C:\USERS\I\PROJECTS\CI\BUILD\CMAKEFILES\DAF56B909758EE1C2427EA998F87C444\GENERATE.STAMP.RULE
+setlocal
+D:\Application\CMake\bin\cmake.exe -SC:/Users/I/projects/ci -BC:/Users/I/projects/ci/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/I/projects/ci/build/ci.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

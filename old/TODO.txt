@@ -1,0 +1,6 @@
+1. virtual machine
+2. loc, stk optimize stack
+3. string-related, see line 228
+4. semantics check -> left value, type check etc.
+5. check parameter
+6. struct
