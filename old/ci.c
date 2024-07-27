@@ -11,17 +11,20 @@
 #define int int32_t
 #define long int64_t
 
-#ifndef MAX_TABLE
-# define MAX_TABLE 1024
+#ifndef MIN_TEXT
+# define MIN_TEXT 65536
 #endif
-#ifndef MAX_TEXT
-# define MAX_TEXT 65536
+#ifndef MIN_DATA
+# define MIN_DATA 4096
 #endif
-#ifndef MAX_DATA
-# define MAX_DATA 4096
+#ifndef MIN_TABLE
+# define MIN_TABLE 1024
 #endif
-#ifndef MAX_BREAK
-# define MAX_BREAK 128
+#ifndef MIN_BREAK
+# define MIN_BREAK 128
+#endif
+#ifndef MIN_STACK
+# define MIN_STACK 4096
 #endif
 
 static int no;
@@ -78,6 +81,19 @@ static int tk;
 static long val;
 static const char* str;
 
+static int max_text = MIN_TEXT;
+static int max_data = MIN_DATA;
+static int max_table = MIN_TABLE;
+static int max_break = MIN_BREAK;
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
+int ci_compile_options(int maxtext, int maxdata, int maxtable, int maxbreak) {
+    max_text  = max(maxtext, MIN_TEXT);
+    max_data  = max(maxdata, MIN_DATA);
+    max_table = max(maxtable, MIN_TABLE);
+    max_break = max(maxbreak, MIN_BREAK);
+}
+
 static char *text, *ct;
 static char *data, *cd;
 #define e8 (*(char**)check_text(sizeof(char)))
@@ -90,14 +106,14 @@ static char *data, *cd;
 #define d64 (*(long**)check_data(sizeof(long)))
 
 static void** check_text(int sz) {
-    if ((ct+sz) > (text+MAX_TEXT)) {
+    if ((ct+sz) > (text+max_text)) {
         error("text segment too short");
     }
     return (void**)&ct;
 }
 
 static void** check_data(int sz) {
-    if ((cd+sz) > (data+MAX_DATA)) {
+    if ((cd+sz) > (data+max_data)) {
         error("data segment too short");
     }
     return (void**)&cd;
@@ -260,7 +276,7 @@ static ci_id_t* new_id() {
             }
         }
     }
-    if (tblen >= MAX_TABLE) {
+    if (tblen >= max_table) {
         error("max identifier exceeded");
     }
     ci_id_t* id = &table[tblen++];
@@ -825,7 +841,7 @@ static void stmt() {
     else if (tk == Break) {
         next();
         if (sol == 0) { error("'break' outside of loop"); }
-        if ((cbrk - brks) >= MAX_BREAK) { error("too many breaks"); }
+        if ((cbrk - brks) >= max_break) { error("too many breaks"); }
         if (tk != ';') { error("';' expected"); }
         next();
         *e8++ = JMP;
@@ -865,7 +881,7 @@ int ci_compile(struct ci_program* prog, char* src, ci_id_t* sys, int num) {
     no = 1;
     p = src;
 
-    table = malloc(MAX_TABLE * sizeof(ci_id_t));
+    table = malloc(max_table * sizeof(ci_id_t));
     tblen = 0;
     scope = 1;
     while (tblen < num) {
@@ -877,11 +893,11 @@ int ci_compile(struct ci_program* prog, char* src, ci_id_t* sys, int num) {
         tblen++;
     }
 
-    text = ct = malloc(MAX_TEXT);
-    data = cd = malloc(MAX_DATA);
-    memset(data, 0, MAX_DATA);
+    text = ct = malloc(max_text);
+    data = cd = malloc(max_data);
+    memset(data, 0, max_data);
 
-    brks = cbrk = malloc(MAX_BREAK * sizeof(int*));
+    brks = cbrk = malloc(max_break * sizeof(int*));
     sol = 0;
 
     next();
@@ -994,7 +1010,7 @@ int ci_compile(struct ci_program* prog, char* src, ci_id_t* sys, int num) {
         }
     }
     if (!main || main->kind != Fun) {
-        error("main() is not found");
+        error("main() not found");
     }
 
     prog->main = main->val;
@@ -1018,6 +1034,7 @@ int ci_execute(struct ci_program* prog, int stksize) {
     #define pc32 (*(int**)&pc)
     #define pc64 (*(long**)&pc)
 
+    stksize = max(stksize, MIN_STACK);
     char* stack = malloc(stksize + 80); // +80: reserve some bytes for PRINTF, or it may crash
     char* sp = stack + stksize;
     char* bp = stack + stksize;
@@ -1230,6 +1247,7 @@ int ci_debug(struct ci_program* prog, int stksize) {
     #define pc32 (*(int**)&pc)
     #define pc64 (*(long**)&pc)
 
+    stksize = max(stksize, MIN_STACK);
     char* stack = malloc(stksize + 80); // +80: reserve some bytes for PRINTF, or it may crash
     char* sp = stack + stksize;
     char* bp = stack + stksize;

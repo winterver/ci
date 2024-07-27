@@ -50,8 +50,8 @@ int64_t ci_syscall(int num, int64_t* p, int c) {
 }
 
 int main() {
-    char buf[BUFSIZ*10];
-    int n = fread(buf, 1, BUFSIZ*10, stdin);
+    char buf[BUFSIZ*10+1];
+    int n = read(0, buf, BUFSIZ*10);
     buf[n] = 0;
 
     struct ci_program prog;
@@ -60,7 +60,7 @@ int main() {
         return -1;
     }
  
-    int ax = ci_execute(&prog, 4096);
+    int ax = ci_execute(&prog, 0);
     printf("exit(%d)\n", ax);
  
 	return 0;

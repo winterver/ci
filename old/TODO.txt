@@ -1,5 +1,6 @@
 ok 1. virtual machine
 2. string-related, see line 228
-3. semantics check -> left value, type check etc.
-4. check parameter
-5. struct
+3. floating point support
+4. semantics check -> left value, type check etc.
+5. check parameter
+6. struct
