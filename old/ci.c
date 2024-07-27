@@ -1,15 +1,10 @@
+#include "ci.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <malloc.h>
 #include <setjmp.h>
 #include <ctype.h>
-#ifdef _WIN32
-# include <io.h>
-#else
-# include <unistd.h>
-#endif
 
 #define char int8_t
 #define short int16_t
@@ -36,6 +31,10 @@ static jmp_buf jmp;
 static void error(const char* str) {
     err = str;
     longjmp(jmp, 1);
+}
+
+void ci_perror() {
+    printf("(%d): %s\n", no, err);
 }
 
 #define STRINGIFY(str) #str
@@ -238,19 +237,11 @@ static void next() {
     }
 }
 
-typedef struct {
-    const char* name;
-    int scope;
-    int kind;
-    int type;
-    int val;
-} id_t;
-
-static id_t* table;
+static ci_id_t* table;
 static int tblen;
 static int scope;
 
-static id_t* find_id() {
+static ci_id_t* find_id() {
     for (int i = tblen; i-- > 0;) {
         if (idcmp(str, table[i].name)) {
             return &table[i];
@@ -260,7 +251,7 @@ static id_t* find_id() {
     return NULL;
 }
 
-static id_t* new_id() {
+static ci_id_t* new_id() {
     for (int i = tblen; i-- > 0;) {
         if (scope > table[i].scope) { break; }
         if (idcmp(str, table[i].name)) {
@@ -272,8 +263,8 @@ static id_t* new_id() {
     if (tblen >= MAX_TABLE) {
         error("max identifier exceeded");
     }
-    id_t* id = &table[tblen++];
-    memset(id, 0, sizeof(id_t));
+    ci_id_t* id = &table[tblen++];
+    memset(id, 0, sizeof(ci_id_t));
     id->scope = scope;
     id->name = str;
     return id;
@@ -321,7 +312,7 @@ static void expr(int lev) {
         ty = INT;
     }
     else if (tk == Id) {
-        id_t* d = find_id();
+        ci_id_t* d = find_id();
         next();
         if (tk == '(') {
             next();
@@ -332,7 +323,7 @@ static void expr(int lev) {
                 if (tk == ',') { next(); }
             }
             next();
-            if (d->kind == Sys) { *e8++ = SYS; *e8++ = d->val; }
+            if (d->kind == Sys) { *e8++ = SYS; *e16++ = d->val; }
             else if (d->kind == Fun) { *e8++ = JSR; *e32++ = d->val; }
             else { error("bad function call"); }
             if (t) { *e8++ = ADJ; *e8++ = t; }
@@ -743,7 +734,7 @@ static void stmt() {
                         i = val;
                         next();
                     }
-                    id_t* id = new_id();
+                    ci_id_t* id = new_id();
                     id->kind = Enum;
                     id->val = i++;
                     if (tk == ',') { next(); }
@@ -758,20 +749,29 @@ static void stmt() {
             if (ty == VOID) { error("bad local variable declaration"); }
             if (tk != Id) { error("bad local variable declaration"); }
 
-            /*
-            char* bp = p,
-                bstr = str;
+            const char
+                *bp = p,
+                *bstr = str;
             int btk = tk,
                 bno = no,
                 bval = val;
-            */
 
             loc -= size_of(ty);
-            id_t* par = new_id();
-            par->kind = Loc;
-            par->type = ty;
-            par->val = loc;
+            ci_id_t* var = new_id();
+            var->kind = Loc;
+            var->type = ty;
+            var->val = loc;
             next();
+
+            if (tk == Assign) {
+                p = bp,
+                str = bstr;
+                tk = btk,
+                no = bno,
+                val = bval;
+                expr(Assign);
+            }
+
             if (tk == ',') { next(); }
         }
     }
@@ -857,15 +857,7 @@ static void stmt() {
     }
 }
 
-struct program {
-    int main;
-    int textlen;
-    int datalen;
-    char* text;
-    char* data;
-};
-
-int compile(struct program* prog, char* src, id_t* sys, int num) {
+int ci_compile(struct ci_program* prog, char* src, ci_id_t* sys, int num) {
     if (setjmp(jmp)) {
         return -1;
     }
@@ -873,7 +865,7 @@ int compile(struct program* prog, char* src, id_t* sys, int num) {
     no = 1;
     p = src;
 
-    table = malloc(MAX_TABLE * sizeof(id_t));
+    table = malloc(MAX_TABLE * sizeof(ci_id_t));
     tblen = 0;
     scope = 1;
     while (tblen < num) {
@@ -915,7 +907,7 @@ int compile(struct program* prog, char* src, id_t* sys, int num) {
                         i = val;
                         next();
                     }
-                    id_t* id = new_id();
+                    ci_id_t* id = new_id();
                     id->kind = Enum;
                     id->val = i++;
                     if (tk == ',') { next(); }
@@ -927,7 +919,7 @@ int compile(struct program* prog, char* src, id_t* sys, int num) {
             ty = bt;
             while (tk == Mul) { next(); ty += PTR; }
             if (tk != Id) { error("bad global declaration"); }
-            id_t* id = new_id();
+            ci_id_t* id = new_id();
             id->type = ty;
             next();
 
@@ -958,7 +950,7 @@ int compile(struct program* prog, char* src, id_t* sys, int num) {
                     while (tk == Mul) { next(); ty += PTR; }
                     if (ty == VOID) { error("bad parameter declaration"); }
                     if (tk != Id) { error("bad parameter declaration"); }
-                    id_t* par = new_id();
+                    ci_id_t* par = new_id();
                     par->kind = Loc;
                     par->type = ty;
                     par->val = loc;
@@ -994,7 +986,7 @@ int compile(struct program* prog, char* src, id_t* sys, int num) {
         next();
     }
 
-    id_t* main = NULL;
+    ci_id_t* main = NULL;
     for (int i = tblen; i-- > 0;) {
         if (idcmp("main", table[i].name)) {
             main = &table[i];
@@ -1019,70 +1011,14 @@ int compile(struct program* prog, char* src, id_t* sys, int num) {
     return 0;
 }
 
-long syscall(int num, long* params, int count);
-int execute(struct program* prog, int stksize, int debug) {
-    if (debug) {
-        char* pc = prog->text;
-        #define pc8 (*(char**)&pc)
-        #define pc16 (*(short**)&pc)
-        #define pc32 (*(int**)&pc)
-        #define pc64 (*(long**)&pc)
-        while (pc < (prog->text + prog->textlen)) {
-            printf("%04llX: ", pc - prog->text);
-            switch(*pc8++) {
-            default: printf("Illegal opcode: %X\n", pc8[-1]); return -1;
-            case GLO: printf("\tGLO 0x%X\n", *pc32++); break;
-            case LEA: printf("\tLEA %d\n", *pc32++); break;
-            case IMM: printf("\tIMM %lld\n", *pc64++); break;
-            case SYS: printf("\tSYS %d\n", *pc8++); break;
-            case BZ: printf("\tBZ 0x%X\n", *pc32++); break;
-            case BNZ: printf("\tBNZ 0x%X\n", *pc32++); break;
-            case JMP: printf("\tJMP 0x%X\n", *pc32++); break;
-            case JSR: printf("\tJSR 0x%X\n", *pc32++); break;
-            case ENT: printf("\tENT %d\n", *pc32++); break;
-            case ADJ: printf("\tADJ %d\n", *pc8++); break;
-            case PSH: printf("\tPSH\n"); break;
-            case LEV: printf("\tLEV\n"); break;
-            case LC: printf("\tLC\n"); break;
-            case LS: printf("\tLS\n"); break;
-            case LI: printf("\tLI\n"); break;
-            case LL: printf("\tLL\n"); break;
-            case SC: printf("\tSC\n"); break;
-            case SS: printf("\tSS\n"); break;
-            case SI: printf("\tSI\n"); break;
-            case SL: printf("\tSL\n"); break;
-            case ADD: printf("\tADD\n"); break;
-            case SUB: printf("\tSUB\n"); break;
-            case MUL: printf("\tMUL\n"); break;
-            case DIV: printf("\tDIV\n"); break;
-            case MOD: printf("\tMOD\n"); break;
-            case AND: printf("\tAND\n"); break;
-            case OR: printf("\tOR\n"); break;
-            case XOR: printf("\tXOR\n"); break;
-            case EQ: printf("\tEQ\n"); break;
-            case NE: printf("\tNE\n"); break;
-            case LT: printf("\tLT\n"); break;
-            case GT: printf("\tGT\n"); break;
-            case LE: printf("\tLE\n"); break;
-            case GE: printf("\tGE\n"); break;
-            case SHL: printf("\tSHL\n"); break;
-            case SHR: printf("\tSHR\n"); break;
-            }
-        }
-        #undef pc64
-        #undef pc32
-        #undef pc16
-        #undef pc8
-        printf("\n");
-    }
-
+int ci_execute(struct ci_program* prog, int stksize) {
     char* pc = prog->text + prog->main;
     #define pc8 (*(char**)&pc)
     #define pc16 (*(short**)&pc)
     #define pc32 (*(int**)&pc)
     #define pc64 (*(long**)&pc)
 
-    char* stack = malloc(stksize);
+    char* stack = malloc(stksize + 80); // +80: reserve some bytes for PRINTF, or it may crash
     char* sp = stack + stksize;
     char* bp = stack + stksize;
     #define sp8 (*(char**)&sp)
@@ -1092,67 +1028,52 @@ int execute(struct program* prog, int stksize, int debug) {
 
     long ax;
 
-    #define debugf(...) if (debug) { printf(__VA_ARGS__); }
-
     while (1) {
         if (sp < (stack+8)) { printf("Stack overflow\n"); goto End; }
-        debugf("%04llX: ", pc - prog->text);
         switch(*pc8++) {
         default:
             printf("Illegal opcode: %X\n", (uint8_t)pc8[-1]);
             goto End;
         case GLO:
-            debugf("\tGLO 0x%X\n", *pc32);
             ax = (long)(prog->data + *pc32++);
             break;
         case LEA:
-            debugf("\tLEA %d\n", *pc32);
             ax = (long)(bp + *pc32++);
             break;
         case IMM:
-            debugf("\tIMM %lld\n", *pc64);
             ax = *pc64++;
             break;
         case SYS:
-            debugf("\tSYS %d\n", *pc8);
-            int count = pc[1] == ADJ ? pc[2] : 0;
-            ax = syscall(*pc8++, (long*)sp, count);
+            int count = pc[2] == ADJ ? pc[3] : 0;
+            ax = ci_syscall(*pc16++, (long*)sp, count);
             break;
         case BZ:
-            debugf("\tBZ 0x%X\n", *pc32);
             if (!ax) { pc = prog->text + *pc32; }
             else { pc32++; }
             break;
         case BNZ:
-            debugf("\tBNZ 0x%X\n", *pc32);
             if (ax) { pc = prog->text + *pc32; }
             else { pc32++; }
             break;
         case JMP:
-            debugf("\tJMP 0x%X\n", *pc32);
             pc = prog->text + *pc32;
             break;
         case JSR:
-            debugf("\tJSR 0x%X\n", *pc32);
             *--sp32 = pc - prog->text + 4;
             pc = prog->text + *pc32;
             break;
         case ENT:
-            debugf("\tENT %d\n", *pc32);
             *--sp32 = bp - stack;
             bp = sp;
             sp += *pc32++;
             break;
         case ADJ:
-            debugf("\tADJ %d\n", *pc8);
             sp64 += *pc8++;
             break;
         case PSH:
-            debugf("\tPSH\n");
             *--sp64 = ax;
             break;
         case LEV:
-            debugf("\tLEV\n");
             sp = bp;
             bp = stack + *sp32++;
             // check if return from main
@@ -1163,104 +1084,79 @@ int execute(struct program* prog, int stksize, int debug) {
             pc = prog->text + *sp32++;
             break;
         case LC:
-            debugf("\tLC\n");
             ax = *(char*)ax;
             break;
         case LS:
-            debugf("\tLS\n");
             ax = *(short*)ax;
             break;
         case LI:
-            debugf("\tLI\n");
             ax = *(int*)ax;
             break;
         case LL:
-            debugf("\tLL\n");
             ax = *(long*)ax;
             break;
         case SC:
-            debugf("\tSC\n");
             *(char*)*sp64++ = ax;
             break;
         case SS:
-            debugf("\tSS\n");
             *(short*)*sp64++ = ax;
             break;
         case SI:
-            debugf("\tSI\n");
             *(int*)*sp64++ = ax;
             break;
         case SL:
-            debugf("\tSL\n");
             *(long*)*sp64++ = ax;
             break;
         case ADD:
-            debugf("\tADD\n");
             ax = *sp64++ + ax;
             break;
         case SUB:
-            debugf("\tSUB\n");
             ax = *sp64++ - ax;
             break;
         case MUL:
-            debugf("\tMUL\n");
             ax = *sp64++ * ax;
             break;
         case DIV:
-            debugf("\tDIV\n");
             ax = *sp64++ / ax;
             break;
         case MOD:
-            debugf("\tMOD\n");
             ax = *sp64++ % ax;
             break;
         case AND:
-            debugf("\tAND\n");
             ax = *sp64++ & ax;
             break;
         case OR:
-            debugf("\tOR\n");
             ax = *sp64++ | ax;
             break;
         case XOR:
-            debugf("\tXOR\n");
             ax = *sp64++ ^ ax;
             break;
         case EQ:
-            debugf("\tEQ\n");
             ax = *sp64++ == ax;
             break;
         case NE:
-            debugf("\tNE\n");
             ax = *sp64++ != ax;
             break;
         case LT:
-            debugf("\tLT\n");
             ax = *sp64++ < ax;
             break;
         case GT:
-            debugf("\tGT\n");
             ax = *sp64++ > ax;
             break;
         case LE:
-            debugf("\tLE\n");
             ax = *sp64++ <= ax;
             break;
         case GE:
-            debugf("\tGE\n");
             ax = *sp64++ >= ax;
             break;
         case SHL:
-            debugf("\tSHL\n");
             ax = *sp64++ << ax;
             break;
         case SHR:
-            debugf("\tSHR\n");
             ax = *sp64++ >> ax;
             break;
         }
     }
-    #undef debugf
     #undef sp64
     #undef sp32
     #undef sp16
@@ -1274,60 +1170,251 @@ End:
     return ax;
 }
 
-enum {
-    READ,
-    WRITE,
-    OPEN,
-    CLOSE,
-    MALLOC,
-    FREE,
-    MEMSET,
-    MEMCPY,
-    PRINTF,
-    EXIT,
-};
-static id_t sys[] = {
-    { .val = READ, .type = INT, .name = "read" },
-    { .val = WRITE, .type = INT, .name = "write" },
-    { .val = OPEN, .type = INT, .name = "open" },
-    { .val = CLOSE, .type = INT, .name = "close" },
-    { .val = MALLOC, .type = INT, .name = "malloc" },
-    { .val = FREE, .type = INT, .name = "free" },
-    { .val = MEMSET, .type = INT, .name = "memset" },
-    { .val = MEMCPY, .type = INT, .name = "memcpy" },
-    { .val = PRINTF, .type = INT, .name = "printf" },
-    { .val = EXIT, .type = INT, .name = "exit" },
-};
-#define NUM (sizeof(sys)/sizeof(sys[0]))
-
-long syscall(int num, long* p, int c) {
-    switch(num) {
-    case READ: return read(p[c-1], (void*)p[c-2], p[c-3]);
-    case WRITE: return write(p[c-1], (void*)p[c-2], p[c-3]);
-    case OPEN: return open((char*)p[c-1], p[c-2]);
-    case CLOSE: return close(p[c-1]);
-    case MALLOC: return (long)malloc(p[c-1]);
-    case FREE: free((void*)p[c-1]);
-    case MEMSET: return (long)memset((void*)p[c-1], p[c-2], p[c-3]);
-    case MEMCPY: return (long)memcpy((void*)p[c-1], (void*)p[c-2], p[c-3]);
-    case PRINTF: return printf((char*)p[c-1], p[c-2], p[c-3], p[c-4], p[c-5], p[c-6], p[c-7]);
-    case EXIT: exit(p[c-1]);
+int ci_debug(struct ci_program* prog, int stksize) {
+    char* pc = prog->text;
+    #define pc8 (*(char**)&pc)
+    #define pc16 (*(short**)&pc)
+    #define pc32 (*(int**)&pc)
+    #define pc64 (*(long**)&pc)
+    while (pc < (prog->text + prog->textlen)) {
+        printf("%04llX: ", pc - prog->text);
+        switch(*pc8++) {
+        default: printf("Illegal opcode: %X\n", pc8[-1]); return -1;
+        case GLO: printf("\tGLO 0x%X\n", *pc32++); break;
+        case LEA: printf("\tLEA %d\n", *pc32++); break;
+        case IMM: printf("\tIMM %lld\n", *pc64++); break;
+        case SYS: printf("\tSYS %d\n", *pc16++); break;
+        case BZ: printf("\tBZ 0x%X\n", *pc32++); break;
+        case BNZ: printf("\tBNZ 0x%X\n", *pc32++); break;
+        case JMP: printf("\tJMP 0x%X\n", *pc32++); break;
+        case JSR: printf("\tJSR 0x%X\n", *pc32++); break;
+        case ENT: printf("\tENT %d\n", *pc32++); break;
+        case ADJ: printf("\tADJ %d\n", *pc8++); break;
+        case PSH: printf("\tPSH\n"); break;
+        case LEV: printf("\tLEV\n"); break;
+        case LC: printf("\tLC\n"); break;
+        case LS: printf("\tLS\n"); break;
+        case LI: printf("\tLI\n"); break;
+        case LL: printf("\tLL\n"); break;
+        case SC: printf("\tSC\n"); break;
+        case SS: printf("\tSS\n"); break;
+        case SI: printf("\tSI\n"); break;
+        case SL: printf("\tSL\n"); break;
+        case ADD: printf("\tADD\n"); break;
+        case SUB: printf("\tSUB\n"); break;
+        case MUL: printf("\tMUL\n"); break;
+        case DIV: printf("\tDIV\n"); break;
+        case MOD: printf("\tMOD\n"); break;
+        case AND: printf("\tAND\n"); break;
+        case OR: printf("\tOR\n"); break;
+        case XOR: printf("\tXOR\n"); break;
+        case EQ: printf("\tEQ\n"); break;
+        case NE: printf("\tNE\n"); break;
+        case LT: printf("\tLT\n"); break;
+        case GT: printf("\tGT\n"); break;
+        case LE: printf("\tLE\n"); break;
+        case GE: printf("\tGE\n"); break;
+        case SHL: printf("\tSHL\n"); break;
+        case SHR: printf("\tSHR\n"); break;
+        }
     }
-}
+    #undef pc64
+    #undef pc32
+    #undef pc16
+    #undef pc8
+    printf("\n");
 
-int main() {
-    char buf[BUFSIZ*10];
-    int n = fread(buf, 1, BUFSIZ*10, stdin);
-    buf[n] = 0;
+    pc = prog->text + prog->main;
+    #define pc8 (*(char**)&pc)
+    #define pc16 (*(short**)&pc)
+    #define pc32 (*(int**)&pc)
+    #define pc64 (*(long**)&pc)
 
-    struct program prog;
-    if (compile(&prog, buf, sys, NUM)) {
-        printf("(%d): %s\n", no, err);
-        return -1;
+    char* stack = malloc(stksize + 80); // +80: reserve some bytes for PRINTF, or it may crash
+    char* sp = stack + stksize;
+    char* bp = stack + stksize;
+    #define sp8 (*(char**)&sp)
+    #define sp16 (*(short**)&sp)
+    #define sp32 (*(int**)&sp)
+    #define sp64 (*(long**)&sp)
+
+    long ax;
+
+    while (1) {
+        if (sp < (stack+8)) { printf("Stack overflow\n"); goto End; }
+        printf("%04llX: ", pc - prog->text);
+        switch(*pc8++) {
+        default:
+            printf("Illegal opcode: %X\n", (uint8_t)pc8[-1]);
+            goto End;
+        case GLO:
+            printf("\tGLO 0x%X\n", *pc32);
+            ax = (long)(prog->data + *pc32++);
+            break;
+        case LEA:
+            printf("\tLEA %d\n", *pc32);
+            ax = (long)(bp + *pc32++);
+            break;
+        case IMM:
+            printf("\tIMM %lld\n", *pc64);
+            ax = *pc64++;
+            break;
+        case SYS:
+            printf("\tSYS %d\n", *pc16);
+            int count = pc[2] == ADJ ? pc[3] : 0;
+            ax = ci_syscall(*pc16++, (long*)sp, count);
+            break;
+        case BZ:
+            printf("\tBZ 0x%X\n", *pc32);
+            if (!ax) { pc = prog->text + *pc32; }
+            else { pc32++; }
+            break;
+        case BNZ:
+            printf("\tBNZ 0x%X\n", *pc32);
+            if (ax) { pc = prog->text + *pc32; }
+            else { pc32++; }
+            break;
+        case JMP:
+            printf("\tJMP 0x%X\n", *pc32);
+            pc = prog->text + *pc32;
+            break;
+        case JSR:
+            printf("\tJSR 0x%X\n", *pc32);
+            *--sp32 = pc - prog->text + 4;
+            pc = prog->text + *pc32;
+            break;
+        case ENT:
+            printf("\tENT %d\n", *pc32);
+            *--sp32 = bp - stack;
+            bp = sp;
+            sp += *pc32++;
+            break;
+        case ADJ:
+            printf("\tADJ %d\n", *pc8);
+            sp64 += *pc8++;
+            break;
+        case PSH:
+            printf("\tPSH\n");
+            *--sp64 = ax;
+            break;
+        case LEV:
+            printf("\tLEV\n");
+            sp = bp;
+            bp = stack + *sp32++;
+            // check if return from main
+            if (bp == (stack+stksize)) {
+                // break; // breaks switch, not while
+                goto End;
+            }
+            pc = prog->text + *sp32++;
+            break;
+        case LC:
+            printf("\tLC\n");
+            ax = *(char*)ax;
+            break;
+        case LS:
+            printf("\tLS\n");
+            ax = *(short*)ax;
+            break;
+        case LI:
+            printf("\tLI\n");
+            ax = *(int*)ax;
+            break;
+        case LL:
+            printf("\tLL\n");
+            ax = *(long*)ax;
+            break;
+        case SC:
+            printf("\tSC\n");
+            *(char*)*sp64++ = ax;
+            break;
+        case SS:
+            printf("\tSS\n");
+            *(short*)*sp64++ = ax;
+            break;
+        case SI:
+            printf("\tSI\n");
+            *(int*)*sp64++ = ax;
+            break;
+        case SL:
+            printf("\tSL\n");
+            *(long*)*sp64++ = ax;
+            break;
+        case ADD:
+            printf("\tADD\n");
+            ax = *sp64++ + ax;
+            break;
+        case SUB:
+            printf("\tSUB\n");
+            ax = *sp64++ - ax;
+            break;
+        case MUL:
+            printf("\tMUL\n");
+            ax = *sp64++ * ax;
+            break;
+        case DIV:
+            printf("\tDIV\n");
+            ax = *sp64++ / ax;
+            break;
+        case MOD:
+            printf("\tMOD\n");
+            ax = *sp64++ % ax;
+            break;
+        case AND:
+            printf("\tAND\n");
+            ax = *sp64++ & ax;
+            break;
+        case OR:
+            printf("\tOR\n");
+            ax = *sp64++ | ax;
+            break;
+        case XOR:
+            printf("\tXOR\n");
+            ax = *sp64++ ^ ax;
+            break;
+        case EQ:
+            printf("\tEQ\n");
+            ax = *sp64++ == ax;
+            break;
+        case NE:
+            printf("\tNE\n");
+            ax = *sp64++ != ax;
+            break;
+        case LT:
+            printf("\tLT\n");
+            ax = *sp64++ < ax;
+            break;
+        case GT:
+            printf("\tGT\n");
+            ax = *sp64++ > ax;
+            break;
+        case LE:
+            printf("\tLE\n");
+            ax = *sp64++ <= ax;
+            break;
+        case GE:
+            printf("\tGE\n");
+            ax = *sp64++ >= ax;
+            break;
+        case SHL:
+            printf("\tSHL\n");
+            ax = *sp64++ << ax;
+            break;
+        case SHR:
+            printf("\tSHR\n");
+            ax = *sp64++ >> ax;
+            break;
+        }
     }
- 
-    int ax = execute(&prog, 4096, 0);
-    printf("exit(%d)\n", ax);
- 
-	return 0;
+    #undef sp64
+    #undef sp32
+    #undef sp16
+    #undef sp8
+    #undef pc64
+    #undef pc32
+    #undef pc16
+    #undef pc8
+End:
+    free(stack);
+    return ax;
 }
