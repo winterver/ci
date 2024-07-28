@@ -361,16 +361,18 @@ static void expr(int lev) {
                 *e8++ = PSH;
 
                 ptr -= e8 - be8;
-                if (ptr < buf) {
-                    error("function call too complex");
-                }
+                if (ptr < buf) { error("function call too complex"); }
                 memcpy(ptr, be8, e8 - be8);
                 e8 = be8;
 
                 if (tk == ',') { next(); }
             }
-            memcpy(e8, ptr, buf + sizeof(buf) - ptr);
-            e8 += buf + sizeof(buf) - ptr;
+            int len = buf + sizeof(buf) - ptr;
+            if ((e8 + len) > (text + max_text)) {
+                error("text segment too short");
+            }
+            memcpy(e8, ptr, len);
+            e8 += len;
             next();
             if (d->kind == Sys) { *e8++ = SYS; *e16++ = d->val; }
             else if (d->kind == Fun) { *e8++ = JSR; *e32++ = d->val; }
