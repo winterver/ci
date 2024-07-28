@@ -87,13 +87,6 @@ static int max_table = MIN_TABLE;
 static int max_break = MIN_BREAK;
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
-int ci_compile_options(int maxtext, int maxdata, int maxtable, int maxbreak) {
-    max_text  = max(maxtext, MIN_TEXT);
-    max_data  = max(maxdata, MIN_DATA);
-    max_table = max(maxtable, MIN_TABLE);
-    max_break = max(maxbreak, MIN_BREAK);
-}
-
 static char *text, *ct;
 static char *data, *cd;
 #define e8 (*(char**)check_text(sizeof(char)))
@@ -253,11 +246,19 @@ static void next() {
     }
 }
 
-static ci_id_t* table;
+typedef struct {
+    const char* name;
+    int scope;
+    int kind;
+    int type;
+    int val;
+} id_t;
+
+static id_t* table;
 static int tblen;
 static int scope;
 
-static ci_id_t* find_id() {
+static id_t* find_id() {
     for (int i = tblen; i-- > 0;) {
         if (idcmp(str, table[i].name)) {
             return &table[i];
@@ -267,7 +268,7 @@ static ci_id_t* find_id() {
     return NULL;
 }
 
-static ci_id_t* new_id() {
+static id_t* new_id() {
     for (int i = tblen; i-- > 0;) {
         if (scope > table[i].scope) { break; }
         if (idcmp(str, table[i].name)) {
@@ -279,11 +280,30 @@ static ci_id_t* new_id() {
     if (tblen >= max_table) {
         error("max identifier exceeded");
     }
-    ci_id_t* id = &table[tblen++];
-    memset(id, 0, sizeof(ci_id_t));
+    id_t* id = &table[tblen++];
+    memset(id, 0, sizeof(id_t));
     id->scope = scope;
     id->name = str;
     return id;
+}
+
+void ci_register_syscall(int num, int type, char* name) {
+    id_t* id = &table[tblen++];
+    memset(id, 0, sizeof(id_t));
+    id->kind = Sys;
+    id->val = num;
+    id->type = type;
+    id->name = name;
+    id->scope = 0;
+}
+
+void ci_register_enum(char* name, int val) {
+    id_t* id = &table[tblen++];
+    memset(id, 0, sizeof(id_t));
+    id->kind = Enum;
+    id->name = name;
+    id->val = val;
+    id->scope = 0;
 }
 
 int ty;
@@ -328,7 +348,7 @@ static void expr(int lev) {
         ty = INT;
     }
     else if (tk == Id) {
-        ci_id_t* d = find_id();
+        id_t* d = find_id();
         next();
         if (tk == '(') {
             next();
@@ -750,7 +770,7 @@ static void stmt() {
                         i = val;
                         next();
                     }
-                    ci_id_t* id = new_id();
+                    id_t* id = new_id();
                     id->kind = Enum;
                     id->val = i++;
                     if (tk == ',') { next(); }
@@ -773,7 +793,7 @@ static void stmt() {
                 bval = val;
 
             loc -= size_of(ty);
-            ci_id_t* var = new_id();
+            id_t* var = new_id();
             var->kind = Loc;
             var->type = ty;
             var->val = loc;
@@ -873,32 +893,43 @@ static void stmt() {
     }
 }
 
-int ci_compile(struct ci_program* prog, char* src, ci_id_t* sys, int num) {
+int ci_init(int maxtext, int maxdata, int maxtable, int maxbreak) {
+    max_text  = max(maxtext, MIN_TEXT);
+    max_data  = max(maxdata, MIN_DATA);
+    max_table = max(maxtable, MIN_TABLE);
+    max_break = max(maxbreak, MIN_BREAK);
+
+    text = malloc(max_text);
+    data = malloc(max_data);
+
+    table = malloc(max_table * sizeof(id_t));
+    tblen = 0;
+
+    brks = cbrk = malloc(max_break * sizeof(int*));
+    sol = 0;
+}
+
+void ci_exit() {
+    free(text);
+    free(data);
+    free(table);
+    free(brks);
+}
+
+int ci_compile(struct ci_program* prog, char* src) {
     if (setjmp(jmp)) {
         return -1;
     }
 
     no = 1;
     p = src;
-
-    table = malloc(max_table * sizeof(ci_id_t));
-    tblen = 0;
     scope = 1;
-    while (tblen < num) {
-        table[tblen].val = sys[tblen].val;
-        table[tblen].type = sys[tblen].type;
-        table[tblen].name = sys[tblen].name;
-        table[tblen].scope = 0;
-        table[tblen].kind = Sys;
-        tblen++;
-    }
 
-    text = ct = malloc(max_text);
-    data = cd = malloc(max_data);
+    ct = text;
+    cd = data;
     memset(data, 0, max_data);
 
-    brks = cbrk = malloc(max_break * sizeof(int*));
-    sol = 0;
+    int btblen = tblen;
 
     next();
     while (tk) {
@@ -923,7 +954,7 @@ int ci_compile(struct ci_program* prog, char* src, ci_id_t* sys, int num) {
                         i = val;
                         next();
                     }
-                    ci_id_t* id = new_id();
+                    id_t* id = new_id();
                     id->kind = Enum;
                     id->val = i++;
                     if (tk == ',') { next(); }
@@ -935,7 +966,7 @@ int ci_compile(struct ci_program* prog, char* src, ci_id_t* sys, int num) {
             ty = bt;
             while (tk == Mul) { next(); ty += PTR; }
             if (tk != Id) { error("bad global declaration"); }
-            ci_id_t* id = new_id();
+            id_t* id = new_id();
             id->type = ty;
             next();
 
@@ -966,7 +997,7 @@ int ci_compile(struct ci_program* prog, char* src, ci_id_t* sys, int num) {
                     while (tk == Mul) { next(); ty += PTR; }
                     if (ty == VOID) { error("bad parameter declaration"); }
                     if (tk != Id) { error("bad parameter declaration"); }
-                    ci_id_t* par = new_id();
+                    id_t* par = new_id();
                     par->kind = Loc;
                     par->type = ty;
                     par->val = loc;
@@ -1002,7 +1033,7 @@ int ci_compile(struct ci_program* prog, char* src, ci_id_t* sys, int num) {
         next();
     }
 
-    ci_id_t* main = NULL;
+    id_t* main = NULL;
     for (int i = tblen; i-- > 0;) {
         if (idcmp("main", table[i].name)) {
             main = &table[i];
@@ -1020,10 +1051,9 @@ int ci_compile(struct ci_program* prog, char* src, ci_id_t* sys, int num) {
     prog->data = malloc(d8 - data);
     memcpy(prog->text, text, e8 - text);
     memcpy(prog->data, data, d8 - data);
-    free(text);
-    free(data);
-    free(table);
-    free(brks);
+
+    tblen = btblen;
+
     return 0;
 }
 

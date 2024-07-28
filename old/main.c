@@ -8,24 +8,10 @@
 #endif
 
 enum {
-    READ, WRITE, OPEN, CLOSE,
+    READ, WRITE, OPEN, CLOSE, LSEEK,
     MALLOC, FREE, MEMSET, MEMCPY,
     PRINTF, SCANF, EXIT,
 };
-static ci_id_t sys[] = {
-    { .val = READ, .type = CI_INT, .name = "read" },
-    { .val = WRITE, .type = CI_INT, .name = "write" },
-    { .val = OPEN, .type = CI_INT, .name = "open" },
-    { .val = CLOSE, .type = CI_INT, .name = "close" },
-    { .val = MALLOC, .type = CI_INT, .name = "malloc" },
-    { .val = FREE, .type = CI_INT, .name = "free" },
-    { .val = MEMSET, .type = CI_INT, .name = "memset" },
-    { .val = MEMCPY, .type = CI_INT, .name = "memcpy" },
-    { .val = PRINTF, .type = CI_INT, .name = "printf" },
-    { .val = SCANF, .type = CI_INT, .name = "scanf" },
-    { .val = EXIT, .type = CI_INT, .name = "exit" },
-};
-#define NUM (sizeof(sys)/sizeof(sys[0]))
 
 int64_t ci_syscall(int num, int64_t* p, int c) {
     #define ARG1 p[c-1]
@@ -41,13 +27,14 @@ int64_t ci_syscall(int num, int64_t* p, int c) {
     case WRITE: return write(ARG1, (void*)ARG2, ARG3);
     case OPEN: return open((char*)ARG1, ARG2);
     case CLOSE: return close(ARG1);
+    case LSEEK: return lseek(ARG1, ARG2, ARG3);
     case MALLOC: return (int64_t)malloc(ARG1);
-    case FREE: free((void*)ARG1);
+    case FREE: free((void*)ARG1); break;
     case MEMSET: return (int64_t)memset((void*)ARG1, ARG2, ARG3);
     case MEMCPY: return (int64_t)memcpy((void*)ARG1, (void*)ARG2, ARG3);
     case PRINTF: return printf((char*)ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7);
     case SCANF: return scanf((char*)ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7);
-    case EXIT: exit(ARG1);
+    case EXIT: exit(ARG1); break;
     }
 }
 
@@ -72,11 +59,33 @@ int main(int argc, char** argv) {
     }
     buf[len] = 0;
 
+    ci_init(0, 0, 0, 0);
+
+    ci_register_syscall(READ, CI_INT, "read");
+    ci_register_syscall(WRITE, CI_INT, "write");
+    ci_register_syscall(OPEN, CI_INT, "open");
+    ci_register_syscall(CLOSE, CI_INT, "close");
+    ci_register_syscall(LSEEK, CI_INT, "lseek");
+    ci_register_enum("SEEK_SET", SEEK_SET);
+    ci_register_enum("SEEK_CUR", SEEK_CUR);
+    ci_register_enum("SEEK_END", SEEK_END);
+
+    ci_register_syscall(MALLOC, CI_VOID + CI_PTR, "malloc");
+    ci_register_syscall(FREE, CI_VOID, "free");
+    ci_register_syscall(MEMSET, CI_VOID + CI_PTR, "memset");
+    ci_register_syscall(MEMCPY, CI_VOID + CI_PTR, "memcpy");
+
+    ci_register_syscall(PRINTF, CI_INT, "printf");
+    ci_register_syscall(SCANF, CI_INT, "scanf");
+    ci_register_syscall(EXIT, CI_VOID, "exit");
+
     struct ci_program prog;
-    if (ci_compile(&prog, buf, sys, NUM)) {
+    if (ci_compile(&prog, buf)) {
         ci_perror();
         return -1;
     }
+
+    ci_exit();
  
     int ax = ci_execute(&prog, 0);
     printf("exit(%d)\n", ax);
