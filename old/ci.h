@@ -22,8 +22,8 @@ void ci_register_syscall(int num, int type, char* name);
 void ci_register_enum(char* name, int val);
 
 int ci_compile(struct ci_program* prog, char* src);
-int ci_execute(struct ci_program* prog, int stksize);
-int ci_debug(struct ci_program* prog, int stksize);
+int ci_execute(struct ci_program* prog, int stksize, int argc, char** argv);
+int ci_debug(struct ci_program* prog, int stksize, int argc, char** argv);
 
 void ci_perror();
 void ci_exit();

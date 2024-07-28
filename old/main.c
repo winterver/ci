@@ -9,8 +9,8 @@
 
 enum {
     READ, WRITE, OPEN, CLOSE, LSEEK,
-    MALLOC, FREE, MEMSET, MEMCPY,
-    PRINTF, SCANF, EXIT,
+    MALLOC, FREE, MEMSET, MEMCPY, EXIT,
+    PRINTF, SCANF, 
 };
 
 int64_t ci_syscall(int num, int64_t* p, int c) {
@@ -20,7 +20,6 @@ int64_t ci_syscall(int num, int64_t* p, int c) {
     #define ARG4 p[c-4]
     #define ARG5 p[c-5]
     #define ARG6 p[c-6]
-    #define ARG7 p[c-7]
 
     switch(num) {
     case READ: return read(ARG1, (void*)ARG2, ARG3);
@@ -28,18 +27,20 @@ int64_t ci_syscall(int num, int64_t* p, int c) {
     case OPEN: return open((char*)ARG1, ARG2);
     case CLOSE: return close(ARG1);
     case LSEEK: return lseek(ARG1, ARG2, ARG3);
+
     case MALLOC: return (int64_t)malloc(ARG1);
     case FREE: free((void*)ARG1); break;
     case MEMSET: return (int64_t)memset((void*)ARG1, ARG2, ARG3);
     case MEMCPY: return (int64_t)memcpy((void*)ARG1, (void*)ARG2, ARG3);
-    case PRINTF: return printf((char*)ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7);
-    case SCANF: return scanf((char*)ARG1, ARG2, ARG3, ARG4, ARG5, ARG6, ARG7);
     case EXIT: exit(ARG1); break;
+
+    case PRINTF: return printf((char*)ARG1, ARG2, ARG3, ARG4, ARG5, ARG6);
+    case SCANF: return scanf((char*)ARG1, ARG2, ARG3, ARG4, ARG5, ARG6);
     }
 }
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
+    if (argc < 2) {
         printf("usage: ci source.c\n");
         return 0;
     }
@@ -74,10 +75,10 @@ int main(int argc, char** argv) {
     ci_register_syscall(FREE, CI_VOID, "free");
     ci_register_syscall(MEMSET, CI_VOID + CI_PTR, "memset");
     ci_register_syscall(MEMCPY, CI_VOID + CI_PTR, "memcpy");
+    ci_register_syscall(EXIT, CI_VOID, "exit");
 
     ci_register_syscall(PRINTF, CI_INT, "printf");
     ci_register_syscall(SCANF, CI_INT, "scanf");
-    ci_register_syscall(EXIT, CI_VOID, "exit");
 
     struct ci_program prog;
     if (ci_compile(&prog, buf)) {
@@ -87,7 +88,7 @@ int main(int argc, char** argv) {
 
     ci_exit();
  
-    int ax = ci_execute(&prog, 0);
+    int ax = ci_execute(&prog, 0, argc-1, (signed char**)argv+1);
     printf("exit(%d)\n", ax);
  
 	return 0;

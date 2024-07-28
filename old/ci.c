@@ -1057,7 +1057,7 @@ int ci_compile(struct ci_program* prog, char* src) {
     return 0;
 }
 
-int ci_execute(struct ci_program* prog, int stksize) {
+int ci_execute(struct ci_program* prog, int stksize, int argc, char** argv) {
     char* pc = prog->text + prog->main;
     #define pc8 (*(char**)&pc)
     #define pc16 (*(short**)&pc)
@@ -1065,13 +1065,17 @@ int ci_execute(struct ci_program* prog, int stksize) {
     #define pc64 (*(long**)&pc)
 
     stksize = max(stksize, MIN_STACK);
-    char* stack = malloc(stksize + 80); // +80: reserve some bytes for PRINTF, or it may crash
+    char* stack = malloc(stksize + 80); // +80: reserve some bytes for variadic functions in ci_syscall(), or they may cause crash.
     char* sp = stack + stksize;
     char* bp = stack + stksize;
     #define sp8 (*(char**)&sp)
     #define sp16 (*(short**)&sp)
     #define sp32 (*(int**)&sp)
     #define sp64 (*(long**)&sp)
+    sp8 += 20;
+    *--sp64 = argc;
+    *--sp64 = (long)argv;
+    *--sp32 = 0;
 
     long ax;
 
@@ -1217,7 +1221,7 @@ End:
     return ax;
 }
 
-int ci_debug(struct ci_program* prog, int stksize) {
+int ci_debug(struct ci_program* prog, int stksize, int argc, char** argv) {
     char* pc = prog->text;
     #define pc8 (*(char**)&pc)
     #define pc16 (*(short**)&pc)
@@ -1278,13 +1282,17 @@ int ci_debug(struct ci_program* prog, int stksize) {
     #define pc64 (*(long**)&pc)
 
     stksize = max(stksize, MIN_STACK);
-    char* stack = malloc(stksize + 80); // +80: reserve some bytes for PRINTF, or it may crash
+    char* stack = malloc(stksize + 80);
     char* sp = stack + stksize;
     char* bp = stack + stksize;
     #define sp8 (*(char**)&sp)
     #define sp16 (*(short**)&sp)
     #define sp32 (*(int**)&sp)
     #define sp64 (*(long**)&sp)
+    sp8 += 20;
+    *--sp64 = argc;
+    *--sp64 = (long)argv;
+    *--sp32 = 0;
 
     long ax;
 
