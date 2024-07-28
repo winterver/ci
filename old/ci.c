@@ -352,12 +352,25 @@ static void expr(int lev) {
         next();
         if (tk == '(') {
             next();
+            char buf[1024];
+            char* ptr = buf + sizeof(buf);
+            char* be8 = e8;
             int t;
             for (t = 0; tk != ')'; t++) {
                 expr(Assign);
                 *e8++ = PSH;
+
+                ptr -= e8 - be8;
+                if (ptr < buf) {
+                    error("function call too complex");
+                }
+                memcpy(ptr, be8, e8 - be8);
+                e8 = be8;
+
                 if (tk == ',') { next(); }
             }
+            memcpy(e8, ptr, buf + sizeof(buf) - ptr);
+            e8 += buf + sizeof(buf) - ptr;
             next();
             if (d->kind == Sys) { *e8++ = SYS; *e16++ = d->val; }
             else if (d->kind == Fun) { *e8++ = JSR; *e32++ = d->val; }
@@ -1073,8 +1086,8 @@ int ci_execute(struct ci_program* prog, int stksize, int argc, char** argv) {
     #define sp32 (*(int**)&sp)
     #define sp64 (*(long**)&sp)
     sp8 += 20;
-    *--sp64 = argc;
     *--sp64 = (long)argv;
+    *--sp64 = argc;
     *--sp32 = 0;
 
     long ax;
@@ -1095,8 +1108,7 @@ int ci_execute(struct ci_program* prog, int stksize, int argc, char** argv) {
             ax = *pc64++;
             break;
         case SYS:
-            int count = pc[2] == ADJ ? pc[3] : 0;
-            ax = ci_syscall(*pc16++, (long*)sp, count);
+            ax = ci_syscall(*pc16++, (long*)sp);
             break;
         case BZ:
             if (!ax) { pc = prog->text + *pc32; }
@@ -1290,8 +1302,8 @@ int ci_debug(struct ci_program* prog, int stksize, int argc, char** argv) {
     #define sp32 (*(int**)&sp)
     #define sp64 (*(long**)&sp)
     sp8 += 20;
-    *--sp64 = argc;
     *--sp64 = (long)argv;
+    *--sp64 = argc;
     *--sp32 = 0;
 
     long ax;
@@ -1317,8 +1329,7 @@ int ci_debug(struct ci_program* prog, int stksize, int argc, char** argv) {
             break;
         case SYS:
             printf("\tSYS %d\n", *pc16);
-            int count = pc[2] == ADJ ? pc[3] : 0;
-            ax = ci_syscall(*pc16++, (long*)sp, count);
+            ax = ci_syscall(*pc16++, (long*)sp);
             break;
         case BZ:
             printf("\tBZ 0x%X\n", *pc32);

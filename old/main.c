@@ -13,29 +13,22 @@ enum {
     PRINTF, SCANF, 
 };
 
-int64_t ci_syscall(int num, int64_t* p, int c) {
-    #define ARG1 p[c-1]
-    #define ARG2 p[c-2]
-    #define ARG3 p[c-3]
-    #define ARG4 p[c-4]
-    #define ARG5 p[c-5]
-    #define ARG6 p[c-6]
-
+int64_t ci_syscall(int num, int64_t* p) {
     switch(num) {
-    case READ: return read(ARG1, (void*)ARG2, ARG3);
-    case WRITE: return write(ARG1, (void*)ARG2, ARG3);
-    case OPEN: return open((char*)ARG1, ARG2);
-    case CLOSE: return close(ARG1);
-    case LSEEK: return lseek(ARG1, ARG2, ARG3);
+    case READ: return read(p[0], (void*)p[1], p[2]);
+    case WRITE: return write(p[0], (void*)p[1], p[2]);
+    case OPEN: return open((char*)p[0], p[1]);
+    case CLOSE: return close(p[0]);
+    case LSEEK: return lseek(p[0], p[1], p[2]);
 
-    case MALLOC: return (int64_t)malloc(ARG1);
-    case FREE: free((void*)ARG1); break;
-    case MEMSET: return (int64_t)memset((void*)ARG1, ARG2, ARG3);
-    case MEMCPY: return (int64_t)memcpy((void*)ARG1, (void*)ARG2, ARG3);
-    case EXIT: exit(ARG1); break;
+    case MALLOC: return (int64_t)malloc(p[0]);
+    case FREE: free((void*)p[0]); break;
+    case MEMSET: return (int64_t)memset((void*)p[0], p[1], p[2]);
+    case MEMCPY: return (int64_t)memcpy((void*)p[0], (void*)p[1], p[2]);
+    case EXIT: exit(p[0]); break;
 
-    case PRINTF: return printf((char*)ARG1, ARG2, ARG3, ARG4, ARG5, ARG6);
-    case SCANF: return scanf((char*)ARG1, ARG2, ARG3, ARG4, ARG5, ARG6);
+    case PRINTF: return printf((char*)p[0], p[1], p[2], p[3], p[4], p[5]);
+    case SCANF: return scanf((char*)p[0], p[1], p[2], p[3], p[4], p[5]);
     }
 }
 

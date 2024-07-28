@@ -33,6 +33,6 @@ void ci_exit();
 #undef short
 #undef char
 
-int64_t ci_syscall(int num, int64_t* params, int count);
+int64_t ci_syscall(int num, int64_t* params);
 
 #endif

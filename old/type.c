@@ -1,11 +1,4 @@
-void test(int a, int b) {
-    printf("%d %d\n", a, b);
-}
-
 int main(int argc, char** argv) {
-    test(1, 2);
-    return 0;
-    printf("%d\n", argv);
     if (argc != 2) {
         printf("usage: ci type.c <file>\n");
         return 0;
