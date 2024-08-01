@@ -81,6 +81,7 @@ int main(int argc, char** argv) {
 
     ci_exit();
  
+    //int ax = ci_debug(&prog, 0, argc-1, (signed char**)argv+1);
     int ax = ci_execute(&prog, 0, argc-1, (signed char**)argv+1);
     printf("exit(%d)\n", ax);
  

@@ -89,6 +89,7 @@ static int max_break = MIN_BREAK;
 
 static char *text, *ct;
 static char *data, *cd;
+static char *rct; // reverse current text
 #define e8 (*(char**)check_text(sizeof(char)))
 #define e16 (*(short**)check_text(sizeof(short)))
 #define e32 (*(int**)check_text(sizeof(int)))
@@ -352,27 +353,23 @@ static void expr(int lev) {
         next();
         if (tk == '(') {
             next();
-            char buf[1024];
-            char* ptr = buf + sizeof(buf);
+            char* brct = rct;
             char* be8 = e8;
             int t;
             for (t = 0; tk != ')'; t++) {
                 expr(Assign);
                 *e8++ = PSH;
 
-                ptr -= e8 - be8;
-                if (ptr < buf) { error("function call too complex"); }
-                memcpy(ptr, be8, e8 - be8);
+                rct -= e8 - be8;
+                if (rct < e8) { error("text segment too short"); }
+                memcpy(rct, be8, e8 - be8);
                 e8 = be8;
 
                 if (tk == ',') { next(); }
             }
-            int len = buf + sizeof(buf) - ptr;
-            if ((e8 + len) > (text + max_text)) {
-                error("text segment too short");
-            }
-            memcpy(e8, ptr, len);
-            e8 += len;
+            memcpy(e8, rct, brct - rct);
+            e8 += brct - rct;
+            rct = brct;
             next();
             if (d->kind == Sys) { *e8++ = SYS; *e16++ = d->val; }
             else if (d->kind == Fun) { *e8++ = JSR; *e32++ = d->val; }
@@ -943,6 +940,7 @@ int ci_compile(struct ci_program* prog, char* src) {
     ct = text;
     cd = data;
     memset(data, 0, max_data);
+    rct = text + max_text;
 
     int btblen = tblen;
 
