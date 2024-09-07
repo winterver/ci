@@ -4,8 +4,20 @@
 #include <string.h>
 #include <stdint.h>
 #include <setjmp.h>
-#include <ctype.h>
 
+#define isdigit(c)                      \
+        ('0' <= (c) && (c) <= '9')
+#define isxdigit(c)                     \
+        (('0' <= (c) && (c) <= '9') ||  \
+         ('a' <= (c) && (c) <= 'f') ||  \
+         ('A' <= (c) && (c) <= 'F'))
+#define isalpha(c)                      \
+        (('a' <= (c) && (c) <= 'z') ||  \
+         ('A' <= (c) && (c) <= 'Z'))
+#define isalnum(c)                      \
+        (('a' <= (c) && (c) <= 'z') ||  \
+         ('A' <= (c) && (c) <= 'Z') ||  \
+         ('0' <= (c) && (c) <= '9'))
 #define char int8_t
 #define short int16_t
 #define int int32_t
@@ -253,6 +265,8 @@ typedef struct {
     int kind;
     int type;
     int val;
+// This line is to make gcc happy
+#define id_t IDENTIFIER
 } id_t;
 
 static id_t* table;
